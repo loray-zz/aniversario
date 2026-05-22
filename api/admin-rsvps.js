@@ -1,4 +1,6 @@
-import { kv } from "@vercel/kv";
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -12,8 +14,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // lrange 0 -1 = all items
-    const items = await kv.lrange("rsvps", 0, -1);
+    const items = await redis.lrange("rsvps", 0, -1);
     const rsvps = items.map((item) =>
       typeof item === "string" ? JSON.parse(item) : item
     );
@@ -22,7 +23,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ rsvps, totalGuests });
   } catch (err) {
-    console.error("KV error:", err);
+    console.error("Redis error:", err);
     return res.status(500).json({ error: "Failed to fetch RSVPs" });
   }
 }

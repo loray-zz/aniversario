@@ -1,4 +1,6 @@
-import { kv } from "@vercel/kv";
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -22,11 +24,10 @@ export default async function handler(req, res) {
   };
 
   try {
-    // lpush adds to the front of the list (newest first)
-    await kv.lpush("rsvps", JSON.stringify(entry));
+    await redis.lpush("rsvps", JSON.stringify(entry));
     return res.status(200).json({ success: true });
   } catch (err) {
-    console.error("KV error:", err);
+    console.error("Redis error:", err);
     return res.status(500).json({ error: "Failed to save RSVP" });
   }
 }
