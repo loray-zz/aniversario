@@ -500,6 +500,12 @@ export default function App() {
       // Backend handles everything — just check the flag
       if (data.complete && data.rsvpData) {
         await saveRsvp(data.rsvpData);
+        // Fire WhatsApp notifications (don't await — don't block UX)
+        fetch("/api/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data.rsvpData),
+        }).catch(() => {});
         setIsTyping(false);
         setView("success");
         return;
