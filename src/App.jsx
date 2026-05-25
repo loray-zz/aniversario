@@ -369,6 +369,75 @@ function Admin({ rsvps, totalGuests, adminPwd, onBack, onRefresh, loading, setRs
     { icon: "📅", label: "Dias restantes",  val: daysLeft },
   ];
 
+  // ── EXPORT CSV ──────────────────────────────────────────────
+  function exportCSV() {
+    const header = ["Nome", "Pessoas", "WhatsApp", "Restrição Alimentar", "Mensagem", "Data de Confirmação"];
+    const rows = rsvps.map(r => [
+      r.name,
+      r.guests,
+      r.whatsapp,
+      r.dietary || "Nenhuma",
+      r.message || "",
+      new Date(r.timestamp).toLocaleString("pt-BR"),
+    ]);
+    const csv = [header, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `confirmados-fernando-50.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── EXPORT PDF ──────────────────────────────────────────────
+  function exportPDF() {
+    const win = window.open("", "_blank");
+    const rows = rsvps.map((r, i) => `
+      <tr style="background:${i % 2 === 0 ? "#1a1408" : "#0e0c09"}">
+        <td>${r.name}</td>
+        <td style="text-align:center">${r.guests}</td>
+        <td>${r.whatsapp}</td>
+        <td>${r.dietary || "Nenhuma"}</td>
+        <td>${r.message || "—"}</td>
+        <td>${new Date(r.timestamp).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}</td>
+      </tr>`).join("");
+
+    win.document.write(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Confirmados — Fernando 50 Anos</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #09080a; color: #f0e8d8; margin: 0; padding: 32px; }
+  h1   { color: #c9922a; font-size: 24px; margin-bottom: 4px; }
+  p    { color: #7a6040; font-size: 13px; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th   { background: #c9922a; color: #09080a; padding: 10px 12px; text-align: left; font-weight: bold; }
+  td   { padding: 9px 12px; border-bottom: 1px solid #2c1f0e; }
+  .stats { display: flex; gap: 24px; margin-bottom: 28px; }
+  .stat  { background: #1a1408; border: 1px solid #2c1f0e; padding: 16px 24px; text-align: center; }
+  .stat-num { font-size: 28px; color: #c9922a; font-weight: bold; }
+  .stat-lbl { font-size: 11px; color: #7a6040; margin-top: 4px; }
+  @media print { body { background: white; color: black; } th { background: #333; color: white; } td { border-color: #ccc; } .stat { background: #f5f5f5; border-color: #ccc; } .stat-num { color: #c9922a; } }
+</style>
+</head><body>
+<h1>🔥 Fernando — 50 Anos</h1>
+<p>Lista de confirmados gerada em ${new Date().toLocaleString("pt-BR")} · Evento: Sáb 17/10/2026 às 13h · Condomínio Living Wellness, Aclimação-SP</p>
+<div class="stats">
+  <div class="stat"><div class="stat-num">${rsvps.length}</div><div class="stat-lbl">Confirmações</div></div>
+  <div class="stat"><div class="stat-num">${totalGuests}</div><div class="stat-lbl">Total de pessoas</div></div>
+  <div class="stat"><div class="stat-num">${daysLeft}</div><div class="stat-lbl">Dias restantes</div></div>
+</div>
+<table>
+  <thead><tr><th>Nome</th><th>Pessoas</th><th>WhatsApp</th><th>Restrição</th><th>Mensagem</th><th>Confirmado em</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+</body></html>`);
+    win.document.close();
+    setTimeout(() => { win.print(); }, 500);
+  }
+
   async function deleteOne(id) {
     if (!window.confirm("Remover este convidado?")) return;
     setActionLoading(true);
@@ -427,6 +496,10 @@ function Admin({ rsvps, totalGuests, adminPwd, onBack, onRefresh, loading, setRs
             <div style={{ fontSize: 12, color: G.muted }}>Confirmações em tempo real</div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
+            {rsvps.length > 0 && <>
+              <button className="btn-ghost" onClick={exportCSV} style={{ padding: "8px 14px", fontSize: 12 }}>⬇ XLS</button>
+              <button className="btn-ghost" onClick={exportPDF} style={{ padding: "8px 14px", fontSize: 12 }}>⬇ PDF</button>
+            </>}
             <button className="btn-ghost" onClick={onRefresh} style={{ padding: "8px 14px", fontSize: 12 }}>
               {loading ? "..." : "↻ Atualizar"}
             </button>
