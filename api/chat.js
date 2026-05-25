@@ -9,12 +9,32 @@ Colete em ordem:
 4. Restrições alimentares (se não tiver, ok)
 5. Mensagem opcional para o Fernando
 
-Quando tiver nome, quantidade, WhatsApp e restrições (mensagem é opcional), responda SOMENTE com este JSON exato, sem nenhum texto adicional, sem markdown:
-{"complete":true,"name":"NOME","guests":NUMERO,"whatsapp":"WHATS","dietary":"RESTRICAO","message":"MENSAGEM"}
+Quando tiver nome, quantidade, WhatsApp e restrições (mensagem é opcional), finalize com EXATAMENTE este bloco (sem nenhum texto depois):
+<RSVP>nome=NOME|pessoas=NUMERO|whats=WHATS|restricao=RESTRICAO|msg=MENSAGEM</RSVP>
 
-Se não houver mensagem, use string vazia. Se não houver restrição, use "Nenhuma".
-Enquanto coleta dados, responda apenas com texto natural — NUNCA com JSON parcial.
+Exemplo real:
+<RSVP>nome=João Silva|pessoas=2|whats=11999998888|restricao=Nenhuma|msg=Parabéns!</RSVP>
+
+Se não houver mensagem, deixe msg= em branco. Se não houver restrição, escreva Nenhuma.
+Enquanto coleta dados, responda apenas com texto normal — nunca use a tag RSVP antes de ter todos os dados.
 Seja breve, caloroso, use emojis com moderação. Sempre em português brasileiro informal.`;
+
+function parseRsvpTag(text) {
+  const match = text.match(/<RSVP>([\s\S]*?)<\/RSVP>/i);
+  if (!match) return null;
+  const parts = {};
+  match[1].split("|").forEach((part) => {
+    const [key, ...rest] = part.split("=");
+    parts[key.trim()] = rest.join("=").trim();
+  });
+  return {
+    name:     parts.nome     || "",
+    guests:   parseInt(parts.pessoas) || 1,
+    whatsapp: parts.whats    || "",
+    dietary:  parts.restricao || "Nenhuma",
+    message:  parts.msg      || "",
+  };
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -44,7 +64,17 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
-    return res.status(response.status).json(data);
+    const text = data.content?.[0]?.text || "";
+
+    // Detect RSVP completion tag server-side
+    const rsvpData = parseRsvpTag(text);
+    if (rsvpData) {
+      return res.status(200).json({ complete: true, rsvpData });
+    }
+
+    // Regular chat message — strip any stray RSVP tags just in case
+    const cleanText = text.replace(/<RSVP>[\s\S]*?<\/RSVP>/gi, "").trim();
+    return res.status(200).json({ complete: false, message: cleanText });
   } catch (err) {
     console.error("Anthropic API error:", err);
     return res.status(500).json({ error: "Internal server error" });
