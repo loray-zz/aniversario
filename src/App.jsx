@@ -496,25 +496,16 @@ export default function App() {
         body: JSON.stringify({ messages: conv }),
       });
       const data = await res.json();
-      const text = data.content?.[0]?.text || "";
 
-      // Check for RSVP completion JSON
-      try {
-        const p = JSON.parse(text.trim());
-        if (p.complete) {
-          await saveRsvp({
-            name:     p.name,
-            guests:   parseInt(p.guests) || 1,
-            whatsapp: p.whatsapp,
-            dietary:  p.dietary  || "Nenhuma",
-            message:  p.message  || "",
-          });
-          setIsTyping(false);
-          setView("success");
-          return;
-        }
-      } catch (_) {}
+      // Backend handles everything — just check the flag
+      if (data.complete && data.rsvpData) {
+        await saveRsvp(data.rsvpData);
+        setIsTyping(false);
+        setView("success");
+        return;
+      }
 
+      const text = data.message || "";
       convRef.current = [...conv, { role: "assistant", content: text }];
       setMessages(prev => [...prev, { role: "assistant", content: text }]);
     } catch (_) {
