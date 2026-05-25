@@ -498,9 +498,10 @@ export default function App() {
       const data = await res.json();
       const text = data.content?.[0]?.text || "";
 
-      // Check for RSVP completion JSON
+      // Check for RSVP completion JSON (strip markdown code fences if present)
       try {
-        const p = JSON.parse(text.trim());
+        const clean = text.replace(/```json|```/gi, "").trim();
+        const p = JSON.parse(clean);
         if (p.complete) {
           await saveRsvp({
             name:     p.name,
