@@ -496,26 +496,16 @@ export default function App() {
         body: JSON.stringify({ messages: conv }),
       });
       const data = await res.json();
-      const text = data.content?.[0]?.text || "";
 
-      // Check for RSVP completion JSON (strip markdown code fences if present)
-      try {
-        const clean = text.replace(/```json|```/gi, "").trim();
-        const p = JSON.parse(clean);
-        if (p.complete) {
-          await saveRsvp({
-            name:     p.name,
-            guests:   parseInt(p.guests) || 1,
-            whatsapp: p.whatsapp,
-            dietary:  p.dietary  || "Nenhuma",
-            message:  p.message  || "",
-          });
-          setIsTyping(false);
-          setView("success");
-          return;
-        }
-      } catch (_) {}
+      // New API format: { complete, rsvpData } or { complete: false, message }
+      if (data.complete && data.rsvpData) {
+        await saveRsvp(data.rsvpData);
+        setIsTyping(false);
+        setView("success");
+        return;
+      }
 
+      const text = data.message || data.content?.[0]?.text || "";
       convRef.current = [...conv, { role: "assistant", content: text }];
       setMessages(prev => [...prev, { role: "assistant", content: text }]);
     } catch (_) {
