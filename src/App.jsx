@@ -497,15 +497,14 @@ export default function App() {
       });
       const data = await res.json();
 
-      // New API format: { complete, rsvpData } or { complete: false, message }
-      if (data.complete && data.rsvpData) {
-        await saveRsvp(data.rsvpData);
+      // Backend handles everything — just check the flag
+      if (data.complete) {
         setIsTyping(false);
         setView("success");
         return;
       }
 
-      const text = data.message || data.content?.[0]?.text || "";
+      const text = data.message || "";
       convRef.current = [...conv, { role: "assistant", content: text }];
       setMessages(prev => [...prev, { role: "assistant", content: text }]);
     } catch (_) {
