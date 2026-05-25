@@ -356,17 +356,71 @@ function AdminLogin({ value, onChange, onLogin, loading, error, onBack }) {
 }
 
 /* ── ADMIN DASHBOARD ─────────────────────────────────────────── */
-function Admin({ rsvps, totalGuests, onBack, onRefresh, loading }) {
+function Admin({ rsvps, totalGuests, adminPwd, onBack, onRefresh, loading, setRsvps, setTotalGuests }) {
+  const [editingId,   setEditingId]   = useState(null);
+  const [editForm,    setEditForm]    = useState({});
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
   const daysLeft = Math.max(0, Math.ceil((new Date("2026-10-17") - new Date()) / 86400000));
   const stats = [
     { icon: "✅", label: "Confirmações",    val: rsvps.length },
     { icon: "👥", label: "Total de pessoas", val: totalGuests },
     { icon: "📅", label: "Dias restantes",  val: daysLeft },
   ];
+
+  async function deleteOne(id) {
+    if (!window.confirm("Remover este convidado?")) return;
+    setActionLoading(true);
+    await fetch("/api/admin-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: adminPwd, id }),
+    });
+    onRefresh();
+    setActionLoading(false);
+  }
+
+  async function clearAll() {
+    setActionLoading(true);
+    await fetch("/api/admin-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: adminPwd, deleteAll: true }),
+    });
+    setConfirmClear(false);
+    onRefresh();
+    setActionLoading(false);
+  }
+
+  function startEdit(r) {
+    setEditingId(r.id);
+    setEditForm({ name: r.name, guests: r.guests, whatsapp: r.whatsapp, dietary: r.dietary || "", message: r.message || "" });
+  }
+
+  async function saveEdit(id) {
+    setActionLoading(true);
+    await fetch("/api/admin-update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: adminPwd, id, ...editForm }),
+    });
+    setEditingId(null);
+    onRefresh();
+    setActionLoading(false);
+  }
+
+  const inputStyle = {
+    background: G.card, border: `1px solid ${G.border}`, color: G.text,
+    fontFamily: "Barlow", fontSize: 13, padding: "6px 10px", outline: "none",
+    width: "100%", marginBottom: 6,
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: G.bg, padding: "24px 16px 48px" }}>
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
 
+        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div>
             <div style={{ fontFamily: "Playfair Display", fontSize: 22 }}>Dashboard 🔥</div>
@@ -393,27 +447,78 @@ function Admin({ rsvps, totalGuests, onBack, onRefresh, loading }) {
 
         {/* List */}
         <div style={{ background: G.surface, border: `1px solid ${G.border}` }}>
-          <div style={{ padding: "12px 18px", borderBottom: `1px solid ${G.border}`, fontSize: 10, fontWeight: 600, letterSpacing: "0.22em", color: G.gold, textTransform: "uppercase" }}>
-            Lista de Confirmados
+          <div style={{ padding: "12px 18px", borderBottom: `1px solid ${G.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.22em", color: G.gold, textTransform: "uppercase" }}>
+              Lista de Confirmados
+            </div>
+            {rsvps.length > 0 && (
+              confirmClear
+                ? <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: G.muted }}>Tem certeza?</span>
+                    <button onClick={clearAll} disabled={actionLoading} style={{ fontSize: 11, padding: "4px 10px", background: "#c93030", color: "#fff", border: "none", cursor: "pointer" }}>
+                      Sim, limpar
+                    </button>
+                    <button onClick={() => setConfirmClear(false)} className="btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }}>
+                      Cancelar
+                    </button>
+                  </div>
+                : <button onClick={() => setConfirmClear(true)} className="btn-ghost" style={{ fontSize: 11, padding: "4px 12px", color: "#c93030", borderColor: "#c93030" }}>
+                    🗑 Limpar lista
+                  </button>
+            )}
           </div>
+
           {rsvps.length === 0
             ? <div style={{ padding: 52, textAlign: "center", fontSize: 14, color: G.faint }}>Nenhuma confirmação ainda 🥩</div>
             : rsvps.map((r, i) => (
-              <div key={r.id || i} className="row-hover" style={{ padding: "14px 18px", borderBottom: i < rsvps.length - 1 ? `1px solid ${G.borderMid}` : "none", transition: "background 0.15s" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 5 }}>
-                  <div style={{ fontSize: 15, fontWeight: 500 }}>{r.name}</div>
-                  <span style={{ fontSize: 11, background: G.borderMid, border: `1px solid ${G.border}`, padding: "2px 9px", color: G.gold, flexShrink: 0, marginLeft: 8 }}>
-                    {r.guests} {r.guests === 1 ? "pessoa" : "pessoas"}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: G.muted, display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
-                  {r.whatsapp && <span>📱 {r.whatsapp}</span>}
-                  {r.dietary && r.dietary !== "Nenhuma" && <span>🥗 {r.dietary}</span>}
-                  {r.message && <span style={{ fontStyle: "italic", color: G.faint }}>💬 "{r.message}"</span>}
-                </div>
-                <div style={{ fontSize: 10, color: G.faint, marginTop: 5 }}>
-                  {new Date(r.timestamp).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                </div>
+              <div key={r.id || i} style={{ padding: "14px 18px", borderBottom: i < rsvps.length - 1 ? `1px solid ${G.borderMid}` : "none" }}>
+
+                {editingId === r.id ? (
+                  /* ── EDIT MODE ── */
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: 6, marginBottom: 6 }}>
+                      <input style={inputStyle} value={editForm.name} onChange={e => setEditForm(f => ({...f, name: e.target.value}))} placeholder="Nome completo" />
+                      <input style={inputStyle} type="number" value={editForm.guests} onChange={e => setEditForm(f => ({...f, guests: e.target.value}))} placeholder="Pessoas" />
+                    </div>
+                    <input style={inputStyle} value={editForm.whatsapp} onChange={e => setEditForm(f => ({...f, whatsapp: e.target.value}))} placeholder="WhatsApp" />
+                    <input style={inputStyle} value={editForm.dietary} onChange={e => setEditForm(f => ({...f, dietary: e.target.value}))} placeholder="Restrição alimentar" />
+                    <input style={inputStyle} value={editForm.message} onChange={e => setEditForm(f => ({...f, message: e.target.value}))} placeholder="Mensagem (opcional)" />
+                    <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                      <button className="btn-fire" onClick={() => saveEdit(r.id)} disabled={actionLoading} style={{ padding: "8px 20px", fontSize: 12 }}>
+                        💾 Salvar
+                      </button>
+                      <button className="btn-ghost" onClick={() => setEditingId(null)} style={{ padding: "8px 16px", fontSize: 12 }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── VIEW MODE ── */
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 5 }}>
+                      <div style={{ fontSize: 15, fontWeight: 500 }}>{r.name}</div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 8 }}>
+                        <span style={{ fontSize: 11, background: G.borderMid, border: `1px solid ${G.border}`, padding: "2px 9px", color: G.gold }}>
+                          {r.guests} {r.guests === 1 ? "pessoa" : "pessoas"}
+                        </span>
+                        <button onClick={() => startEdit(r)} style={{ fontSize: 11, padding: "2px 8px", background: "transparent", border: `1px solid ${G.border}`, color: G.muted, cursor: "pointer" }}>
+                          ✏️
+                        </button>
+                        <button onClick={() => deleteOne(r.id)} disabled={actionLoading} style={{ fontSize: 11, padding: "2px 8px", background: "transparent", border: "1px solid #c93030", color: "#c93030", cursor: "pointer" }}>
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: G.muted, display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
+                      {r.whatsapp && <span>📱 {r.whatsapp}</span>}
+                      {r.dietary && r.dietary !== "Nenhuma" && <span>🥗 {r.dietary}</span>}
+                      {r.message && <span style={{ fontStyle: "italic", color: G.faint }}>💬 "{r.message}"</span>}
+                    </div>
+                    <div style={{ fontSize: 10, color: G.faint, marginTop: 5 }}>
+                      {new Date(r.timestamp).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                )}
               </div>
             ))
           }
@@ -547,7 +652,7 @@ export default function App() {
       {view === "chat"        && <Chat        messages={messages} input={input} setInput={setInput} onSend={sendMessage} isTyping={isTyping} endRef={endRef} />}
       {view === "success"     && <Success     onBack={() => setView("landing")} />}
       {view === "admin-login" && <AdminLogin  value={adminInput} onChange={setAdminInput} onLogin={handleAdminLogin} loading={adminLoading} error={adminError} onBack={() => setView("landing")} />}
-      {view === "admin"       && <Admin       rsvps={rsvps} totalGuests={totalGuests} onBack={() => setView("landing")} onRefresh={() => loadRsvps()} loading={adminLoading} />}
+      {view === "admin"       && <Admin       rsvps={rsvps} totalGuests={totalGuests} adminPwd={adminPwd} onBack={() => setView("landing")} onRefresh={() => loadRsvps()} loading={adminLoading} setRsvps={setRsvps} setTotalGuests={setTotalGuests} />}
     </>
   );
 }
