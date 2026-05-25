@@ -9,33 +9,12 @@ Colete em ordem:
 4. Restrições alimentares (se não tiver, ok)
 5. Mensagem opcional para o Fernando
 
-Quando tiver nome, quantidade, WhatsApp e restrições (mensagem é opcional), finalize com EXATAMENTE este bloco:
-<RSVP>nome=NOME|pessoas=NUMERO|whats=WHATS|restricao=RESTRICAO|msg=MENSAGEM</RSVP>
+Quando tiver nome, quantidade, WhatsApp e restrições (mensagem é opcional), responda SOMENTE com este JSON exato, sem nenhum texto adicional, sem markdown:
+{"complete":true,"name":"NOME","guests":NUMERO,"whatsapp":"WHATS","dietary":"RESTRICAO","message":"MENSAGEM"}
 
-Exemplo:
-<RSVP>nome=João Silva|pessoas=2|whats=11999998888|restricao=Nenhuma|msg=Parabéns!</RSVP>
-
-Se não houver mensagem, deixe msg= em branco. Se não houver restrição, escreva Nenhuma.
-Enquanto coleta dados, responda apenas com texto normal.
+Se não houver mensagem, use string vazia. Se não houver restrição, use "Nenhuma".
+Enquanto coleta dados, responda apenas com texto natural — NUNCA com JSON parcial.
 Seja breve, caloroso, use emojis com moderação. Sempre em português brasileiro informal.`;
-
-function parseRsvpTag(text) {
-  const match = text.match(/<RSVP>([\s\S]*?)<\/RSVP>/i);
-  if (!match) return null;
-  const parts = {};
-  match[1].split("|").forEach((part) => {
-    const idx = part.indexOf("=");
-    if (idx === -1) return;
-    parts[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
-  });
-  return {
-    name:     parts.nome      || "",
-    guests:   parseInt(parts.pessoas) || 1,
-    whatsapp: parts.whats     || "",
-    dietary:  parts.restricao || "Nenhuma",
-    message:  parts.msg       || "",
-  };
-}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -43,6 +22,7 @@ export default async function handler(req, res) {
   }
 
   const { messages } = req.body;
+
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: "Invalid request body" });
   }
@@ -56,7 +36,7 @@ export default async function handler(req, res) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 1000,
         system: SYSTEM_PROMPT,
         messages,
@@ -64,21 +44,9 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
-    const rawText = data.content?.[0]?.text || "";
-
-    // Detect and handle RSVP completion entirely on the backend
-    const rsvpData = parseRsvpTag(rawText);
-    if (rsvpData) {
-      // Return rsvpData — frontend will call /api/rsvp to save
-      return res.status(200).json({ complete: true, rsvpData });
-    }
-
-    // Regular chat message
-    const cleanText = rawText.replace(/<RSVP>[\s\S]*?<\/RSVP>/gi, "").trim();
-    return res.status(200).json({ complete: false, message: cleanText });
-
+    return res.status(response.status).json(data);
   } catch (err) {
-    console.error("Error:", err);
+    console.error("Anthropic API error:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 }

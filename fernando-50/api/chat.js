@@ -1,7 +1,3 @@
-import { Redis } from "@upstash/redis";
-
-const redis = Redis.fromEnv();
-
 const SYSTEM_PROMPT = `Você é Brasa 🔥, o assistente virtual do Fernando para o aniversário de 50 anos dele — um churrasco épico no Condomínio Living Wellness (Espaço Gourmet, Aclimação, SP), sábado 17 de outubro de 2026 às 13h.
 
 Sua missão: coletar confirmação de presença de forma descontraída e calorosa.
@@ -73,11 +69,8 @@ export default async function handler(req, res) {
     // Detect and handle RSVP completion entirely on the backend
     const rsvpData = parseRsvpTag(rawText);
     if (rsvpData) {
-      // Save to KV directly here
-      const entry = { ...rsvpData, id: Date.now().toString(), timestamp: new Date().toISOString() };
-      await redis.lpush("rsvps", JSON.stringify(entry));
-      // Tell frontend: done!
-      return res.status(200).json({ complete: true });
+      // Return rsvpData — frontend will call /api/rsvp to save
+      return res.status(200).json({ complete: true, rsvpData });
     }
 
     // Regular chat message
