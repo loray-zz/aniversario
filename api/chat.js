@@ -1,3 +1,7 @@
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
+
 const SYSTEM_PROMPT = `Você é Brasa 🔥, o assistente virtual do Fernando para o aniversário de 50 anos dele — um churrasco épico no Condomínio Living Wellness (Espaço Gourmet, Aclimação, SP), sábado 17 de outubro de 2026 às 13h.
 
 Sua missão: coletar confirmação de presença de forma descontraída e calorosa.
@@ -9,7 +13,7 @@ Colete em ordem:
 4. Restrições alimentares (se não tiver, ok)
 5. Mensagem opcional para o Fernando
 
-Quando tiver nome, quantidade, WhatsApp e restrições (mensagem é opcional), finalize com EXATAMENTE este bloco (sem nenhum texto depois):
+Quando tiver nome, quantidade, WhatsApp e restrições (mensagem é opcional), finalize com EXATAMENTE este bloco:
 <RSVP>nome=NOME|pessoas=NUMERO|whats=WHATS|restricao=RESTRICAO|msg=MENSAGEM</RSVP>
 
 Exemplo:
@@ -26,12 +30,9 @@ function parseRsvpTag(text) {
   match[1].split("|").forEach((part) => {
     const idx = part.indexOf("=");
     if (idx === -1) return;
-    const key = part.slice(0, idx).trim();
-    const val = part.slice(idx + 1).trim();
-    parts[key] = val;
+    parts[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
   });
   return {
-    complete: true,
     name:     parts.nome      || "",
     guests:   parseInt(parts.pessoas) || 1,
     whatsapp: parts.whats     || "",
@@ -69,22 +70,22 @@ export default async function handler(req, res) {
     const data = await response.json();
     const rawText = data.content?.[0]?.text || "";
 
-    // Detect RSVP completion tag
+    // Detect and handle RSVP completion entirely on the backend
     const rsvpData = parseRsvpTag(rawText);
     if (rsvpData) {
-      // Return clean JSON in Anthropic-compatible format so App.jsx can parse it
-      return res.status(200).json({
-        content: [{ type: "text", text: JSON.stringify(rsvpData) }],
-      });
+      // Save to KV directly here
+      const entry = { ...rsvpData, id: Date.now().toString(), timestamp: new Date().toISOString() };
+      await redis.lpush("rsvps", JSON.stringify(entry));
+      // Tell frontend: done!
+      return res.status(200).json({ complete: true });
     }
 
-    // Regular message — return as-is (clean text, no RSVP tag)
+    // Regular chat message
     const cleanText = rawText.replace(/<RSVP>[\s\S]*?<\/RSVP>/gi, "").trim();
-    return res.status(200).json({
-      content: [{ type: "text", text: cleanText }],
-    });
+    return res.status(200).json({ complete: false, message: cleanText });
+
   } catch (err) {
-    console.error("Anthropic API error:", err);
+    console.error("Error:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 }
