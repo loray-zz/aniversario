@@ -356,23 +356,170 @@ function AdminLogin({ value, onChange, onLogin, loading, error, onBack }) {
 }
 
 /* ── ADMIN DASHBOARD ─────────────────────────────────────────── */
-function Admin({ rsvps, totalGuests, onBack, onRefresh, loading }) {
+function Admin({ rsvps, totalGuests, adminPwd, onBack, onRefresh, loading, setRsvps, setTotalGuests }) {
+  const [editingId,   setEditingId]   = useState(null);
+  const [editForm,    setEditForm]    = useState({});
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
   const daysLeft = Math.max(0, Math.ceil((new Date("2026-10-17") - new Date()) / 86400000));
   const stats = [
     { icon: "✅", label: "Confirmações",    val: rsvps.length },
     { icon: "👥", label: "Total de pessoas", val: totalGuests },
     { icon: "📅", label: "Dias restantes",  val: daysLeft },
   ];
+
+  // ── EXPORT EXCEL ────────────────────────────────────────────
+  function exportExcel() {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.onload = () => {
+      const XLSX = window.XLSX;
+
+      const header = [["Nome Completo", "Nº de Pessoas", "WhatsApp", "Restrição Alimentar", "Mensagem", "Data de Confirmação"]];
+      const rows = rsvps.map(r => [
+        r.name,
+        r.guests,
+        r.whatsapp,
+        r.dietary || "Nenhuma",
+        r.message || "",
+        new Date(r.timestamp).toLocaleString("pt-BR"),
+      ]);
+
+      const totaisRow = [
+        "TOTAL",
+        totalGuests,
+        "", "", "", "",
+      ];
+
+      const data = [...header, ...rows, [], totaisRow];
+      const ws   = XLSX.utils.aoa_to_sheet(data);
+
+      // Column widths
+      ws["!cols"] = [
+        { wch: 28 }, // Nome
+        { wch: 14 }, // Pessoas
+        { wch: 18 }, // WhatsApp
+        { wch: 22 }, // Restrição
+        { wch: 30 }, // Mensagem
+        { wch: 20 }, // Data
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Confirmados");
+      XLSX.writeFile(wb, `confirmados-fernando-50.xlsx`);
+    };
+    document.head.appendChild(script);
+  }
+
+  // ── EXPORT PDF ──────────────────────────────────────────────
+  function exportPDF() {
+    const win = window.open("", "_blank");
+    const rows = rsvps.map((r, i) => `
+      <tr style="background:${i % 2 === 0 ? "#1a1408" : "#0e0c09"}">
+        <td>${r.name}</td>
+        <td style="text-align:center">${r.guests}</td>
+        <td>${r.whatsapp}</td>
+        <td>${r.dietary || "Nenhuma"}</td>
+        <td>${r.message || "—"}</td>
+        <td>${new Date(r.timestamp).toLocaleString("pt-BR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}</td>
+      </tr>`).join("");
+
+    win.document.write(`<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<title>Confirmados — Fernando 50 Anos</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #09080a; color: #f0e8d8; margin: 0; padding: 32px; }
+  h1   { color: #c9922a; font-size: 24px; margin-bottom: 4px; }
+  p    { color: #7a6040; font-size: 13px; margin-bottom: 24px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th   { background: #c9922a; color: #09080a; padding: 10px 12px; text-align: left; font-weight: bold; }
+  td   { padding: 9px 12px; border-bottom: 1px solid #2c1f0e; }
+  .stats { display: flex; gap: 24px; margin-bottom: 28px; }
+  .stat  { background: #1a1408; border: 1px solid #2c1f0e; padding: 16px 24px; text-align: center; }
+  .stat-num { font-size: 28px; color: #c9922a; font-weight: bold; }
+  .stat-lbl { font-size: 11px; color: #7a6040; margin-top: 4px; }
+  @media print { body { background: white; color: black; } th { background: #333; color: white; } td { border-color: #ccc; } .stat { background: #f5f5f5; border-color: #ccc; } .stat-num { color: #c9922a; } }
+</style>
+</head><body>
+<h1>🔥 Fernando — 50 Anos</h1>
+<p>Lista de confirmados gerada em ${new Date().toLocaleString("pt-BR")} · Evento: Sáb 17/10/2026 às 13h · Condomínio Living Wellness, Aclimação-SP</p>
+<div class="stats">
+  <div class="stat"><div class="stat-num">${rsvps.length}</div><div class="stat-lbl">Confirmações</div></div>
+  <div class="stat"><div class="stat-num">${totalGuests}</div><div class="stat-lbl">Total de pessoas</div></div>
+  <div class="stat"><div class="stat-num">${daysLeft}</div><div class="stat-lbl">Dias restantes</div></div>
+</div>
+<table>
+  <thead><tr><th>Nome</th><th>Pessoas</th><th>WhatsApp</th><th>Restrição</th><th>Mensagem</th><th>Confirmado em</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+</body></html>`);
+    win.document.close();
+    setTimeout(() => { win.print(); }, 500);
+  }
+
+  async function deleteOne(id) {
+    if (!window.confirm("Remover este convidado?")) return;
+    setActionLoading(true);
+    await fetch("/api/admin-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: adminPwd, id }),
+    });
+    onRefresh();
+    setActionLoading(false);
+  }
+
+  async function clearAll() {
+    setActionLoading(true);
+    await fetch("/api/admin-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: adminPwd, deleteAll: true }),
+    });
+    setConfirmClear(false);
+    onRefresh();
+    setActionLoading(false);
+  }
+
+  function startEdit(r) {
+    setEditingId(r.id);
+    setEditForm({ name: r.name, guests: r.guests, whatsapp: r.whatsapp, dietary: r.dietary || "", message: r.message || "" });
+  }
+
+  async function saveEdit(id) {
+    setActionLoading(true);
+    await fetch("/api/admin-update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: adminPwd, id, ...editForm }),
+    });
+    setEditingId(null);
+    onRefresh();
+    setActionLoading(false);
+  }
+
+  const inputStyle = {
+    background: G.card, border: `1px solid ${G.border}`, color: G.text,
+    fontFamily: "Barlow", fontSize: 13, padding: "6px 10px", outline: "none",
+    width: "100%", marginBottom: 6,
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: G.bg, padding: "24px 16px 48px" }}>
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
 
+        {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div>
             <div style={{ fontFamily: "Playfair Display", fontSize: 22 }}>Dashboard 🔥</div>
             <div style={{ fontSize: 12, color: G.muted }}>Confirmações em tempo real</div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
+            {rsvps.length > 0 && <>
+              <button className="btn-ghost" onClick={exportExcel} style={{ padding: "8px 14px", fontSize: 12 }}>⬇ Excel</button>
+              <button className="btn-ghost" onClick={exportPDF} style={{ padding: "8px 14px", fontSize: 12 }}>⬇ PDF</button>
+            </>}
             <button className="btn-ghost" onClick={onRefresh} style={{ padding: "8px 14px", fontSize: 12 }}>
               {loading ? "..." : "↻ Atualizar"}
             </button>
@@ -393,27 +540,78 @@ function Admin({ rsvps, totalGuests, onBack, onRefresh, loading }) {
 
         {/* List */}
         <div style={{ background: G.surface, border: `1px solid ${G.border}` }}>
-          <div style={{ padding: "12px 18px", borderBottom: `1px solid ${G.border}`, fontSize: 10, fontWeight: 600, letterSpacing: "0.22em", color: G.gold, textTransform: "uppercase" }}>
-            Lista de Confirmados
+          <div style={{ padding: "12px 18px", borderBottom: `1px solid ${G.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.22em", color: G.gold, textTransform: "uppercase" }}>
+              Lista de Confirmados
+            </div>
+            {rsvps.length > 0 && (
+              confirmClear
+                ? <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: G.muted }}>Tem certeza?</span>
+                    <button onClick={clearAll} disabled={actionLoading} style={{ fontSize: 11, padding: "4px 10px", background: "#c93030", color: "#fff", border: "none", cursor: "pointer" }}>
+                      Sim, limpar
+                    </button>
+                    <button onClick={() => setConfirmClear(false)} className="btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }}>
+                      Cancelar
+                    </button>
+                  </div>
+                : <button onClick={() => setConfirmClear(true)} className="btn-ghost" style={{ fontSize: 11, padding: "4px 12px", color: "#c93030", borderColor: "#c93030" }}>
+                    🗑 Limpar lista
+                  </button>
+            )}
           </div>
+
           {rsvps.length === 0
             ? <div style={{ padding: 52, textAlign: "center", fontSize: 14, color: G.faint }}>Nenhuma confirmação ainda 🥩</div>
             : rsvps.map((r, i) => (
-              <div key={r.id || i} className="row-hover" style={{ padding: "14px 18px", borderBottom: i < rsvps.length - 1 ? `1px solid ${G.borderMid}` : "none", transition: "background 0.15s" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 5 }}>
-                  <div style={{ fontSize: 15, fontWeight: 500 }}>{r.name}</div>
-                  <span style={{ fontSize: 11, background: G.borderMid, border: `1px solid ${G.border}`, padding: "2px 9px", color: G.gold, flexShrink: 0, marginLeft: 8 }}>
-                    {r.guests} {r.guests === 1 ? "pessoa" : "pessoas"}
-                  </span>
-                </div>
-                <div style={{ fontSize: 12, color: G.muted, display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
-                  {r.whatsapp && <span>📱 {r.whatsapp}</span>}
-                  {r.dietary && r.dietary !== "Nenhuma" && <span>🥗 {r.dietary}</span>}
-                  {r.message && <span style={{ fontStyle: "italic", color: G.faint }}>💬 "{r.message}"</span>}
-                </div>
-                <div style={{ fontSize: 10, color: G.faint, marginTop: 5 }}>
-                  {new Date(r.timestamp).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                </div>
+              <div key={r.id || i} style={{ padding: "14px 18px", borderBottom: i < rsvps.length - 1 ? `1px solid ${G.borderMid}` : "none" }}>
+
+                {editingId === r.id ? (
+                  /* ── EDIT MODE ── */
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 80px", gap: 6, marginBottom: 6 }}>
+                      <input style={inputStyle} value={editForm.name} onChange={e => setEditForm(f => ({...f, name: e.target.value}))} placeholder="Nome completo" />
+                      <input style={inputStyle} type="number" value={editForm.guests} onChange={e => setEditForm(f => ({...f, guests: e.target.value}))} placeholder="Pessoas" />
+                    </div>
+                    <input style={inputStyle} value={editForm.whatsapp} onChange={e => setEditForm(f => ({...f, whatsapp: e.target.value}))} placeholder="WhatsApp" />
+                    <input style={inputStyle} value={editForm.dietary} onChange={e => setEditForm(f => ({...f, dietary: e.target.value}))} placeholder="Restrição alimentar" />
+                    <input style={inputStyle} value={editForm.message} onChange={e => setEditForm(f => ({...f, message: e.target.value}))} placeholder="Mensagem (opcional)" />
+                    <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                      <button className="btn-fire" onClick={() => saveEdit(r.id)} disabled={actionLoading} style={{ padding: "8px 20px", fontSize: 12 }}>
+                        💾 Salvar
+                      </button>
+                      <button className="btn-ghost" onClick={() => setEditingId(null)} style={{ padding: "8px 16px", fontSize: 12 }}>
+                        Cancelar
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* ── VIEW MODE ── */
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 5 }}>
+                      <div style={{ fontSize: 15, fontWeight: 500 }}>{r.name}</div>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, marginLeft: 8 }}>
+                        <span style={{ fontSize: 11, background: G.borderMid, border: `1px solid ${G.border}`, padding: "2px 9px", color: G.gold }}>
+                          {r.guests} {r.guests === 1 ? "pessoa" : "pessoas"}
+                        </span>
+                        <button onClick={() => startEdit(r)} style={{ fontSize: 11, padding: "2px 8px", background: "transparent", border: `1px solid ${G.border}`, color: G.muted, cursor: "pointer" }}>
+                          ✏️
+                        </button>
+                        <button onClick={() => deleteOne(r.id)} disabled={actionLoading} style={{ fontSize: 11, padding: "2px 8px", background: "transparent", border: "1px solid #c93030", color: "#c93030", cursor: "pointer" }}>
+                          🗑
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 12, color: G.muted, display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
+                      {r.whatsapp && <span>📱 {r.whatsapp}</span>}
+                      {r.dietary && r.dietary !== "Nenhuma" && <span>🥗 {r.dietary}</span>}
+                      {r.message && <span style={{ fontStyle: "italic", color: G.faint }}>💬 "{r.message}"</span>}
+                    </div>
+                    <div style={{ fontSize: 10, color: G.faint, marginTop: 5 }}>
+                      {new Date(r.timestamp).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                )}
               </div>
             ))
           }
@@ -496,25 +694,22 @@ export default function App() {
         body: JSON.stringify({ messages: conv }),
       });
       const data = await res.json();
-      const text = data.content?.[0]?.text || "";
 
-      // Check for RSVP completion JSON
-      try {
-        const p = JSON.parse(text.trim());
-        if (p.complete) {
-          await saveRsvp({
-            name:     p.name,
-            guests:   parseInt(p.guests) || 1,
-            whatsapp: p.whatsapp,
-            dietary:  p.dietary  || "Nenhuma",
-            message:  p.message  || "",
-          });
-          setIsTyping(false);
-          setView("success");
-          return;
-        }
-      } catch (_) {}
+      // Backend handles everything — just check the flag
+      if (data.complete && data.rsvpData) {
+        await saveRsvp(data.rsvpData);
+        // Fire WhatsApp notifications (don't await — don't block UX)
+        fetch("/api/notify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data.rsvpData),
+        }).catch(() => {});
+        setIsTyping(false);
+        setView("success");
+        return;
+      }
 
+      const text = data.message || "";
       convRef.current = [...conv, { role: "assistant", content: text }];
       setMessages(prev => [...prev, { role: "assistant", content: text }]);
     } catch (_) {
@@ -550,7 +745,7 @@ export default function App() {
       {view === "chat"        && <Chat        messages={messages} input={input} setInput={setInput} onSend={sendMessage} isTyping={isTyping} endRef={endRef} />}
       {view === "success"     && <Success     onBack={() => setView("landing")} />}
       {view === "admin-login" && <AdminLogin  value={adminInput} onChange={setAdminInput} onLogin={handleAdminLogin} loading={adminLoading} error={adminError} onBack={() => setView("landing")} />}
-      {view === "admin"       && <Admin       rsvps={rsvps} totalGuests={totalGuests} onBack={() => setView("landing")} onRefresh={() => loadRsvps()} loading={adminLoading} />}
+      {view === "admin"       && <Admin       rsvps={rsvps} totalGuests={totalGuests} adminPwd={adminPwd} onBack={() => setView("landing")} onRefresh={() => loadRsvps()} loading={adminLoading} setRsvps={setRsvps} setTotalGuests={setTotalGuests} />}
     </>
   );
 }
