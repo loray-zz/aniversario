@@ -369,27 +369,47 @@ function Admin({ rsvps, totalGuests, adminPwd, onBack, onRefresh, loading, setRs
     { icon: "📅", label: "Dias restantes",  val: daysLeft },
   ];
 
-  // ── EXPORT CSV ──────────────────────────────────────────────
-  function exportCSV() {
-    const header = ["Nome", "Pessoas", "WhatsApp", "Restrição Alimentar", "Mensagem", "Data de Confirmação"];
-    const rows = rsvps.map(r => [
-      r.name,
-      r.guests,
-      r.whatsapp,
-      r.dietary || "Nenhuma",
-      r.message || "",
-      new Date(r.timestamp).toLocaleString("pt-BR"),
-    ]);
-    const csv = [header, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement("a");
-    a.href     = url;
-    a.download = `confirmados-fernando-50.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // ── EXPORT EXCEL ────────────────────────────────────────────
+  function exportExcel() {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.onload = () => {
+      const XLSX = window.XLSX;
+
+      const header = [["Nome Completo", "Nº de Pessoas", "WhatsApp", "Restrição Alimentar", "Mensagem", "Data de Confirmação"]];
+      const rows = rsvps.map(r => [
+        r.name,
+        r.guests,
+        r.whatsapp,
+        r.dietary || "Nenhuma",
+        r.message || "",
+        new Date(r.timestamp).toLocaleString("pt-BR"),
+      ]);
+
+      const totaisRow = [
+        "TOTAL",
+        totalGuests,
+        "", "", "", "",
+      ];
+
+      const data = [...header, ...rows, [], totaisRow];
+      const ws   = XLSX.utils.aoa_to_sheet(data);
+
+      // Column widths
+      ws["!cols"] = [
+        { wch: 28 }, // Nome
+        { wch: 14 }, // Pessoas
+        { wch: 18 }, // WhatsApp
+        { wch: 22 }, // Restrição
+        { wch: 30 }, // Mensagem
+        { wch: 20 }, // Data
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Confirmados");
+      XLSX.writeFile(wb, `confirmados-fernando-50.xlsx`);
+    };
+    document.head.appendChild(script);
   }
 
   // ── EXPORT PDF ──────────────────────────────────────────────
@@ -497,7 +517,7 @@ function Admin({ rsvps, totalGuests, adminPwd, onBack, onRefresh, loading, setRs
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {rsvps.length > 0 && <>
-              <button className="btn-ghost" onClick={exportCSV} style={{ padding: "8px 14px", fontSize: 12 }}>⬇ XLS</button>
+              <button className="btn-ghost" onClick={exportExcel} style={{ padding: "8px 14px", fontSize: 12 }}>⬇ Excel</button>
               <button className="btn-ghost" onClick={exportPDF} style={{ padding: "8px 14px", fontSize: 12 }}>⬇ PDF</button>
             </>}
             <button className="btn-ghost" onClick={onRefresh} style={{ padding: "8px 14px", fontSize: 12 }}>
